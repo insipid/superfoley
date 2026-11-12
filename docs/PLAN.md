@@ -64,6 +64,10 @@ First real test clip (kept out of git, in `samples/`): vertical 1440x2560 AV1 vi
 - **Variable frame rate / AV1** can desync audio and video; handled in T7.
 - **Docker is only verified on the Mac** (see above), so T8 depends on a reply.
 
+## Status
+
+T0-T7 built and tested (244 tests). T9 docs done; T8 (Docker build on the Mac) pending. Real-clip render verified outside Docker (3 min 1440x2560 AV1: about 50 s, 15 clips, 14.6 s supercut).
+
 ## Out of scope (for now)
 
 Sound labelling, EDL/FCPXML export, cloud runner, batch folder mode, web UI, a longer technical README.
