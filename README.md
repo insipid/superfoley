@@ -15,7 +15,7 @@ docker compose run --rm superfoley /in/video.mp4 --out /out
 
 Results appear in `data/out/video/`.
 
-Without Docker (needs Python 3.11+ and ffmpeg):
+Without Docker (needs Python 3.11+ and ffmpeg; run from the repo directory):
 
 ```sh
 python -m venv .venv && .venv/bin/pip install -e .
@@ -32,6 +32,7 @@ Per video it writes, under `<out>/<video-name>/`:
 
 | Flag | Default | What it does |
 |---|---|---|
+| `--out` | `./out` | Output directory |
 | `--silence-db` | -45 | Frames quieter than this (dBFS) count as silence |
 | `--speech-pad-ms` | 150 | Widen detected speech by this much each side |
 | `--min-gap-ms` | 200 | Join kept sounds closer together than this |
