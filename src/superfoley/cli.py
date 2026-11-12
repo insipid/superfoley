@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .audio import NoAudioError, extract_audio, load_wav, silence_ranges
 from .probe import ProbeError, probe
+from .render import RenderError, render
 from .segments import compute_segments, segments_to_csv, segments_to_json
 from .vad import speech_ranges
 
@@ -114,7 +115,8 @@ def _pipeline(args: argparse.Namespace) -> int:
         print("warning: no non-speech, non-silent segments found; nothing to render",
               file=sys.stderr)
     elif not args.dry_run:
-        pass  # rendering arrives in T6
+        render(src, segments, out_dir, info, crf=args.crf, scale=args.scale,
+               fade_ms=args.fade_ms)
     print(out_dir)
     return 0
 
@@ -126,7 +128,7 @@ def run(args: argparse.Namespace) -> int:
         print(f"error: {e}", file=sys.stderr)
     except NoAudioError as e:
         print(f"error: {e}", file=sys.stderr)
-    except ProbeError as e:
+    except (ProbeError, RenderError) as e:
         print(f"error: {e}", file=sys.stderr)
     except FileNotFoundError as e:
         print("error: ffmpeg/ffprobe not found on PATH" if e.filename in ("ffmpeg", "ffprobe")
