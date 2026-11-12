@@ -29,7 +29,7 @@ First real test clip (kept out of git, in `samples/`): vertical 1440x2560 AV1 vi
 
 - Plain commit messages only: **no** `Co-Authored-By`, session-link or "generated with" trailers, so contribution stats stay clean.
 - Commits are authored as the repo owner (the GitHub account's email), never as Claude.
-- One commit per task, on a `build` branch; final PR to `main`.
+- One commit per task, on a `build` branch; final PR to `trunk`.
 - No attribution lines in PR descriptions either.
 
 ## How the build runs
