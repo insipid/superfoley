@@ -11,7 +11,7 @@ Cut a video down to only its non-speech, non-silent sounds (an ASMR supercut of 
 - **Audio:** original audio only, no normalisation.
 - **Invocation:** `docker compose run --rm superfoley /in/video.mp4 --out /out [flags]`
 - **Target:** M4 Mac (arm64) only. Cloud runner is out of scope for now.
-- **Stack:** Python 3.12, ffmpeg, Silero VAD (ONNX, no PyTorch), numpy, pytest.
+- **Stack:** Python 3.12 (Docker image) / 3.11+ locally, ffmpeg, `pysilero-vad` (Silero VAD, bundled model, no PyTorch; has aarch64 wheels), numpy, pytest.
 
 ## Reference sample
 
@@ -48,7 +48,7 @@ First real test clip (kept out of git, in `samples/`): vertical 1440x2560 AV1 vi
 | T0 | Scaffold | `pyproject.toml`, `src/superfoley/` layout, empty CLI, `Dockerfile`, `docker-compose.yml`, pytest config, `.gitignore` (incl. `samples/`, `out/`) | `pytest` runs (0 tests OK); `python -m superfoley --help` works |
 | T1 | Test fixtures | Script that generates a synthetic video with **known ground truth**: speech, mechanical sounds (clicks, scrapes, noise bursts), silence, fixed frame rate; writes `truth.json` | Deterministic; truth ranges don't overlap |
 | T2 | Audio extraction + silence mask | `audio.py`: ffmpeg to 16 kHz mono WAV; RMS dBFS frame mask | Unit tests on synthetic arrays; mask matches fixture silence within one frame |
-| T3 | Speech detection | `vad.py`: Silero ONNX wrapper returning speech ranges | On fixture, speech ranges overlap truth by at least 90% |
+| T3 | Speech detection | `vad.py`: `pysilero-vad` wrapper (512-sample chunks at 16 kHz) returning speech ranges | On fixture, speech ranges overlap truth by at least 90% |
 | T4 | Interval math | `segments.py`: complement, dilate, merge gaps, drop short, pad, clamp | Property tests: sorted, non-overlapping, in range, flags respected; edge cases (empty, all speech) |
 | T5 | CLI + segment output | Wire T2-T4, write `segments.json` / `.csv`, `--dry-run` | End-to-end on fixture: detected segments match truth within ±150 ms |
 | T6 | Render | `render.py`: cut clips (re-encode H.264/AAC), concat with `-c copy`, audio fades | ffprobe: supercut duration = sum of segments (within one frame); has video and audio |
@@ -63,6 +63,10 @@ First real test clip (kept out of git, in `samples/`): vertical 1440x2560 AV1 vi
 - **Continuous noise (air tools, compressors) is wanted**, so everything that isn't speech or silence is kept, as finely cut as possible. The silence threshold must sit just above the true silence floor, and the min-duration and gap defaults should be small; T9 tunes this on the real clip.
 - **Variable frame rate / AV1** can desync audio and video; handled in T7.
 - **Docker is only verified on the Mac** (see above), so T8 depends on a reply.
+
+## Status
+
+T0-T7 built and tested (244 tests). T9 docs done; T8 (Docker build on the Mac) pending. Real-clip render verified outside Docker (3 min 1440x2560 AV1: about 50 s, 15 clips, 14.6 s supercut).
 
 ## Out of scope (for now)
 

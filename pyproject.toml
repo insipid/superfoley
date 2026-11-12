@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "superfoley"
+version = "0.1.0"
+description = "Cut a video down to only its non-speech, non-silent sounds."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "pysilero-vad",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+superfoley = "superfoley.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+markers = [
+    "silero: test depends on Silero VAD detecting the synthetic speech",
+]
