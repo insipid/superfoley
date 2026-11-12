@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Project data (large media, outputs)
+samples/
+out/
+data/
+*.mp4
+*.mkv
+*.webm
+*.mov
+*.wav
+
+# Fixtures are generated, not committed
+tests/fixtures/generated/
+
+# Env / editor / OS
+.env
+.idea/
+.vscode/
+.DS_Store
