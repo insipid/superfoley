@@ -1,0 +1,7 @@
+services:
+  superfoley:
+    build: .
+    image: superfoley
+    volumes:
+      - ./data/in:/in:ro
+      - ./data/out:/out
