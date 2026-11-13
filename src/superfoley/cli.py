@@ -12,7 +12,7 @@ from pathlib import Path
 
 from .audio import NoAudioError, extract_audio, load_wav, silence_ranges
 from .probe import ProbeError, probe
-from .render import RenderError, render
+from .render import COMBINED_NAME, RenderError, combine, render
 from .segments import compute_segments, segments_to_csv, segments_to_json
 from .vad import speech_ranges
 
@@ -33,7 +33,8 @@ def build_parser() -> argparse.ArgumentParser:
         epilog="Folders: SUPERFOLEY_IN sets the input folder (the Docker image sets /in). "
                "A relative INPUT is looked up there, and with no INPUT every video in it "
                "is processed, skipping any that already have output. SUPERFOLEY_OUT sets "
-               "the default --out (the Docker image sets /out).",
+               "the default --out (the Docker image sets /out). Folder mode also joins all the "
+               "supercuts into one supersupercut.mp4 (use --no-combine to skip).",
     )
     p.add_argument("input", type=Path, nargs="?", default=None,
                    help="input video file; if omitted, process every video in the input folder")
@@ -41,6 +42,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="output directory (default: $SUPERFOLEY_OUT or ./out)")
     p.add_argument("--force", action="store_true",
                    help="when processing a whole folder, redo videos that already have output")
+    p.add_argument("--no-combine", action="store_true",
+                   help=f"when processing a whole folder, don't also build {COMBINED_NAME}")
     p.add_argument("--silence-db", type=float, default=-45.0,
                    help="frames quieter than this RMS level (dBFS) are silence (default: -45)")
     p.add_argument("--speech-pad-ms", type=int, default=150,
@@ -179,6 +182,43 @@ def _guarded(args: argparse.Namespace, src: Path) -> int:
     return 1
 
 
+def _supercut_for(out: Path, stem: str) -> Path | None:
+    for name in (f"{stem}.supercut.mp4", "supercut.mp4"):   # second: pre-rename output
+        if (out / stem / name).exists():
+            return out / stem / name
+    return None
+
+
+def _combine_outputs(args: argparse.Namespace, files: list[Path]) -> bool:
+    """Build ``supersupercut.mp4`` from every supercut of the folder; False on failure."""
+    inputs = [p for f in files if (p := _supercut_for(args.out, f.stem))]
+    if len(inputs) < 2:
+        print(f"not building {COMBINED_NAME}: needs at least two supercuts "
+              f"(found {len(inputs)})", file=sys.stderr)
+        return True
+    dst = args.out / COMBINED_NAME
+    listing = dst.with_suffix(".txt")
+    names = [str(p.relative_to(args.out)) for p in inputs]
+    try:
+        fresh = (dst.exists() and listing.exists()
+                 and listing.read_text(encoding="utf-8").splitlines() == names
+                 and all(p.stat().st_mtime <= dst.stat().st_mtime for p in inputs))
+    except OSError:
+        fresh = False
+    if fresh:
+        print(f"{COMBINED_NAME} is up to date", file=sys.stderr)
+        return True
+    print(f"building {COMBINED_NAME} from {len(inputs)} supercuts", file=sys.stderr)
+    try:
+        combine(inputs, dst, crf=args.crf)
+        listing.write_text("\n".join(names) + "\n", encoding="utf-8")
+    except (CliError, ProbeError, RenderError, OSError, subprocess.CalledProcessError) as e:
+        print(f"error: could not build {COMBINED_NAME}: {_fail_text(e)}", file=sys.stderr)
+        return False
+    print(dst)
+    return True
+
+
 def _batch(args: argparse.Namespace, in_dir: Path) -> int:
     try:
         files = sorted(f for f in in_dir.iterdir()
@@ -211,7 +251,10 @@ def _batch(args: argparse.Namespace, in_dir: Path) -> int:
             failed += 1
     skipped = len(files) - done - failed
     print(f"{done} processed, {skipped} skipped, {failed} failed", file=sys.stderr)
-    return 1 if failed else 0
+    combined_ok = True
+    if not (args.dry_run or args.no_combine):
+        combined_ok = _combine_outputs(args, files)
+    return 1 if failed or not combined_ok else 0
 
 
 def run(args: argparse.Namespace) -> int:

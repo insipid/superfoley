@@ -15,7 +15,8 @@ docker compose run --rm superfoley video.mp4    # just data/in/video.mp4
 ```
 
 - With no filename, every video in `data/in/` is processed, one after another. Videos that already have output are skipped; add `--force` to redo them. One failing video doesn't stop the rest.
-- With a filename (looked up in `data/in/`), that video is always processed.
+- When all that is done, the supercuts are also joined into one `data/out/supersupercut.mp4` (with `supersupercut.txt` listing what's in it). It's rebuilt only when the set of supercuts changes, needs at least two supercuts, and `--no-combine` skips it.
+- With a filename (looked up in `data/in/`), that video is always processed, and no combined file is built.
 - `--out` and the other options still work; `--dry-run` writes the segment list only.
 
 Without Docker (needs Python 3.11+ and ffmpeg; run from the repo directory):
@@ -39,6 +40,7 @@ Per video it writes, under `<out>/<video-name>/`:
 |---|---|---|
 | `--out` | `./out` (`/out` in Docker) | Output directory |
 | `--force` | off | Folder mode: redo videos that already have output |
+| `--no-combine` | off | Folder mode: don't build `supersupercut.mp4` |
 | `--silence-db` | -45 | Frames quieter than this (dBFS) count as silence |
 | `--speech-pad-ms` | 150 | Widen detected speech by this much each side |
 | `--min-gap-ms` | 200 | Join kept sounds closer together than this |
@@ -54,7 +56,9 @@ Per video it writes, under `<out>/<video-name>/`:
 
 Exit codes: 0 success (also when no sounds are found, with a warning), 1 failure (missing file, no audio track, ffmpeg error, or any video failing in folder mode), 2 bad options.
 
-A video counts as done when its `.supercut.mp4` exists (or a finished run found nothing to keep). Folder mode only looks at the top level of the input folder, ignores hidden files, and refuses two videos with the same name but different extensions, since they'd share an output folder.
+A video counts as done when its `.supercut.mp4` exists (or a finished run found nothing to keep). The combined file takes its frame size, frame rate and audio format from the first supercut (alphabetically); others are scaled to fit with black bars. It is re-encoded, so it plays in browsers (index first, no timestamp gaps), unlike a plain copy-join of separately encoded files.
+
+Folder mode only looks at the top level of the input folder, ignores hidden files, and refuses two videos with the same name but different extensions, since they'd share an output folder.
 
 ## Notes
 

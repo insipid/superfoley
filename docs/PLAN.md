@@ -66,7 +66,7 @@ First real test clip (kept out of git, in `samples/`): vertical 1440x2560 AV1 vi
 
 ## Status
 
-T0-T7 built and tested; T9 docs done; T8 (Docker build on the Mac) done by the owner. Folder mode with skip-if-done and `<name>.supercut.mp4` naming added afterwards (256 tests). Real-clip render verified outside Docker (3 min 1440x2560 AV1: about 50 s, 15 clips, 14.6 s supercut).
+T0-T7 built and tested; T9 docs done; T8 (Docker build on the Mac) done by the owner. Folder mode with skip-if-done and `<name>.supercut.mp4` naming added afterwards, then `supersupercut.mp4` (all supercuts of a folder, normalised per file then joined; 260 tests). Real-clip render verified outside Docker (3 min 1440x2560 AV1: about 50 s, 15 clips, 14.6 s supercut).
 
 ## Out of scope (for now)
 

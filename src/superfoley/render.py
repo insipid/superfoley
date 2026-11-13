@@ -9,9 +9,11 @@ import tempfile
 from pathlib import Path
 from typing import Callable, Sequence
 
-from .probe import MediaInfo
+from .probe import MediaInfo, probe
 
 Range = tuple[float, float]
+
+COMBINED_NAME = "supersupercut.mp4"
 
 
 class RenderError(RuntimeError):
@@ -114,3 +116,77 @@ def render(src: str | Path, segments: Sequence[Range], out_dir: str | Path, info
     out = out_dir / supercut_name(src)
     concat_clips(clips, out)
     return out
+
+
+def _video_duration(path: str | Path) -> float:
+    """Duration of the first video stream (the container duration can include longer audio)."""
+    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                        "stream=duration", "-of", "csv=p=0", str(path)],
+                       capture_output=True, text=True)
+    try:
+        return float(r.stdout.split()[0])
+    except (IndexError, ValueError):
+        return probe(path).duration
+
+
+def normalize_command(src: str | Path, dst: str | Path, target: MediaInfo, *,
+                      video_duration: float, crf: int = 20) -> list[str]:
+    """Re-encode one supercut to ``target``'s size, frame rate and audio format (MPEG-TS).
+
+    Inputs may differ; scaling is to fit with padding. MPEG-TS is used for the temporary
+    parts because it has no index or edit lists, so the parts join with continuous
+    timestamps. The part is cut to a whole number of output frames with audio padded or
+    trimmed to match, so audio and video end together and joins leave no gap.
+    """
+    w, h, fps = target.width, target.height, target.fps
+    nframes = max(1, round(video_duration * fps))
+    length = nframes / fps
+    vf = (f"scale={w}:{h}:force_original_aspect_ratio=decrease,"
+          f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={fps.numerator}/{fps.denominator},"
+          f"tpad=stop_mode=clone:stop_duration=1,format=yuv420p")
+    ch = "mono" if target.channels == 1 else "stereo"
+    af = (f"aresample={target.sample_rate}:async=1:first_pts=0,"
+          f"aformat=channel_layouts={ch},apad")
+    return ["ffmpeg", "-v", "error", "-y", "-i", str(src), "-map", "0:v:0", "-map", "0:a:0",
+            "-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-crf", str(crf),
+            "-pix_fmt", "yuv420p", "-frames:v", str(nframes),
+            "-af", af, "-c:a", "aac", "-ar", str(target.sample_rate),
+            "-t", f"{float(length):.6f}", "-f", "mpegts", str(dst)]
+
+
+def combine(supercuts: Sequence[Path], dst: str | Path, *, crf: int = 20,
+            progress: Callable[[str], None] | None = None) -> Path:
+    """Join several supercuts, in order, into one browser-friendly file.
+
+    Output is H.264/AAC at the first supercut's frame size, constant frame rate and audio
+    format, with the index at the front. Each input is normalised on its own (one ffmpeg at
+    a time, so memory stays small however many there are) and the parts are then joined
+    without re-encoding.
+    """
+    dst = Path(dst)
+    supercuts = [Path(p) for p in supercuts]
+    n = len(supercuts)
+    if progress is None:
+        def progress(msg: str) -> None:
+            print(msg, file=sys.stderr, flush=True)
+    target = probe(supercuts[0])
+    part = dst.with_name(dst.name + ".part")
+    with tempfile.TemporaryDirectory(prefix=".combine-", dir=dst.parent) as td:
+        parts = []
+        for i, src in enumerate(supercuts, 1):
+            progress(f"combining {i}/{n}")
+            ts = Path(td) / f"{i:05d}.ts"
+            _run(normalize_command(src, ts, target, video_duration=_video_duration(src),
+                                   crf=crf))
+            parts.append(ts)
+        lst = Path(td) / "list.txt"
+        lst.write_text("".join(f"file {_concat_quote(t.resolve())}\n" for t in parts),
+                       encoding="utf-8")
+        try:
+            _run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(lst),
+                  "-c", "copy", "-bsf:a", "aac_adtstoasc", "-movflags", "+faststart",
+                  "-f", "mp4", str(part)])
+            os.replace(part, dst)
+        finally:
+            part.unlink(missing_ok=True)
+    return dst
