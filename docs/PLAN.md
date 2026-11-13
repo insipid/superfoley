@@ -7,9 +7,9 @@ Cut a video down to only its non-speech, non-silent sounds (an ASMR supercut of 
 - **Name:** superfoley (repo `insipid/superfoley`, Python package `superfoley`, CLI `superfoley`, compose service `superfoley`).
 - **Core method:** non-speech sound = everything - speech - silence. No sound classification or labelling.
 - **Inputs:** one video at a time, a few minutes long. Speech and work sounds rarely overlap; very little background noise.
-- **Outputs per video:** `supercut.mp4`, `segments.json`, `segments.csv`, individual clip files. No EDL / editor timeline.
+- **Outputs per video:** `<name>.supercut.mp4`, `segments.json`, `segments.csv`, individual clip files. No EDL / editor timeline.
 - **Audio:** original audio only, no normalisation.
-- **Invocation:** `docker compose run --rm superfoley /in/video.mp4 --out /out [flags]`
+- **Invocation:** `docker compose run --rm superfoley [video.mp4] [flags]`. The container always uses `/in` and `/out` (`SUPERFOLEY_IN`, `SUPERFOLEY_OUT`); a relative filename is looked up in `/in`; with no filename, every video in `/in` is processed and any with existing output is skipped (`--force` to redo).
 - **Target:** M4 Mac (arm64) only. Cloud runner is out of scope for now.
 - **Stack:** Python 3.12 (Docker image) / 3.11+ locally, ffmpeg, `pysilero-vad` (Silero VAD, bundled model, no PyTorch; has aarch64 wheels), numpy, pytest.
 
@@ -66,8 +66,8 @@ First real test clip (kept out of git, in `samples/`): vertical 1440x2560 AV1 vi
 
 ## Status
 
-T0-T7 built and tested (244 tests). T9 docs done; T8 (Docker build on the Mac) pending. Real-clip render verified outside Docker (3 min 1440x2560 AV1: about 50 s, 15 clips, 14.6 s supercut).
+T0-T7 built and tested; T9 docs done; T8 (Docker build on the Mac) done by the owner. Folder mode with skip-if-done and `<name>.supercut.mp4` naming added afterwards (256 tests). Real-clip render verified outside Docker (3 min 1440x2560 AV1: about 50 s, 15 clips, 14.6 s supercut).
 
 ## Out of scope (for now)
 
-Sound labelling, EDL/FCPXML export, cloud runner, batch folder mode, web UI, a longer technical README.
+Sound labelling, EDL/FCPXML export, cloud runner, web UI, a longer technical README.

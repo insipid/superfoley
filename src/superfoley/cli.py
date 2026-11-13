@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -15,14 +17,30 @@ from .segments import compute_segments, segments_to_csv, segments_to_json
 from .vad import speech_ranges
 
 
+VIDEO_EXTS = {".mp4", ".m4v", ".mov", ".mkv", ".webm", ".avi", ".mpg", ".mpeg", ".ts",
+              ".flv", ".wmv", ".3gp"}
+
+
+def _env_dir(name: str) -> Path | None:
+    v = os.environ.get(name)
+    return Path(v) if v else None
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="superfoley",
         description="Cut a video down to only its non-speech, non-silent sounds.",
+        epilog="Folders: SUPERFOLEY_IN sets the input folder (the Docker image sets /in). "
+               "A relative INPUT is looked up there, and with no INPUT every video in it "
+               "is processed, skipping any that already have output. SUPERFOLEY_OUT sets "
+               "the default --out (the Docker image sets /out).",
     )
-    p.add_argument("input", type=Path, help="input video file")
-    p.add_argument("--out", type=Path, default=Path("./out"),
-                   help="output directory (default: ./out)")
+    p.add_argument("input", type=Path, nargs="?", default=None,
+                   help="input video file; if omitted, process every video in the input folder")
+    p.add_argument("--out", type=Path, default=_env_dir("SUPERFOLEY_OUT") or Path("./out"),
+                   help="output directory (default: $SUPERFOLEY_OUT or ./out)")
+    p.add_argument("--force", action="store_true",
+                   help="when processing a whole folder, redo videos that already have output")
     p.add_argument("--silence-db", type=float, default=-45.0,
                    help="frames quieter than this RMS level (dBFS) are silence (default: -45)")
     p.add_argument("--speech-pad-ms", type=int, default=150,
@@ -51,6 +69,8 @@ class CliError(Exception):
 
 
 def _check_args(p: argparse.ArgumentParser, a: argparse.Namespace) -> None:
+    if a.input is None and _env_dir("SUPERFOLEY_IN") is None:
+        p.error("no input file given (and SUPERFOLEY_IN is not set, so there is no folder to scan)")
     for name in ("speech_pad_ms", "min_gap_ms", "min_dur_ms", "pad_ms", "fade_ms"):
         if getattr(a, name) < 0:
             p.error(f"--{name.replace('_', '-')} must be >= 0")
@@ -70,8 +90,7 @@ def _fail_text(e: BaseException) -> str:
     return str(e)
 
 
-def _pipeline(args: argparse.Namespace) -> int:
-    src = args.input
+def _pipeline(args: argparse.Namespace, src: Path) -> int:
     if not src.exists():
         raise CliError(f"input file not found: {src}")
     if not src.is_file():
@@ -121,9 +140,31 @@ def _pipeline(args: argparse.Namespace) -> int:
     return 0
 
 
-def run(args: argparse.Namespace) -> int:
+def _is_done(out_dir: Path, stem: str, dry_run: bool) -> bool:
+    """Has this video already been processed in a way that satisfies this run?"""
+    seg = out_dir / "segments.json"
+    if dry_run:
+        return seg.exists()
+    if (out_dir / f"{stem}.supercut.mp4").exists() or (out_dir / "supercut.mp4").exists():
+        return True
+    # A finished run that found nothing to keep never writes a supercut.
     try:
-        return _pipeline(args)
+        data = json.loads(seg.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return data.get("segments") == [] and not data.get("params", {}).get("dry_run", True)
+
+
+def _resolve_input(arg: Path, in_dir: Path | None) -> Path:
+    """Absolute paths are used as given; relative ones are looked up in the input folder."""
+    if arg.is_absolute() or in_dir is None:
+        return arg
+    return in_dir / arg
+
+
+def _guarded(args: argparse.Namespace, src: Path) -> int:
+    try:
+        return _pipeline(args, src)
     except CliError as e:
         print(f"error: {e}", file=sys.stderr)
     except NoAudioError as e:
@@ -136,6 +177,48 @@ def run(args: argparse.Namespace) -> int:
     except (subprocess.CalledProcessError, OSError) as e:
         print(f"error: {_fail_text(e)}", file=sys.stderr)
     return 1
+
+
+def _batch(args: argparse.Namespace, in_dir: Path) -> int:
+    try:
+        files = sorted(f for f in in_dir.iterdir()
+                       if f.is_file() and not f.name.startswith(".")
+                       and f.suffix.lower() in VIDEO_EXTS)
+    except OSError as e:
+        print(f"error: cannot read input folder {in_dir}: {e.strerror or e}", file=sys.stderr)
+        return 1
+    if not files:
+        print(f"warning: no video files found in {in_dir}", file=sys.stderr)
+        return 0
+    by_stem: dict[str, list[str]] = {}
+    for f in files:
+        by_stem.setdefault(f.stem, []).append(f.name)
+    clashes = [names for names in by_stem.values() if len(names) > 1]
+    if clashes:
+        for names in clashes:
+            print(f"error: {', '.join(names)} would share one output folder; rename one",
+                  file=sys.stderr)
+        return 1
+    done = failed = 0
+    for i, f in enumerate(files, 1):
+        if not args.force and _is_done(args.out / f.stem, f.stem, args.dry_run):
+            print(f"[{i}/{len(files)}] skip {f.name} (already done)", file=sys.stderr)
+            continue
+        print(f"[{i}/{len(files)}] {f.name}", file=sys.stderr)
+        if _guarded(args, f) == 0:
+            done += 1
+        else:
+            failed += 1
+    skipped = len(files) - done - failed
+    print(f"{done} processed, {skipped} skipped, {failed} failed", file=sys.stderr)
+    return 1 if failed else 0
+
+
+def run(args: argparse.Namespace) -> int:
+    in_dir = _env_dir("SUPERFOLEY_IN")
+    if args.input is None:
+        return _batch(args, in_dir)
+    return _guarded(args, _resolve_input(args.input, in_dir))
 
 
 def main(argv: list[str] | None = None) -> int:
