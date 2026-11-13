@@ -26,7 +26,7 @@ def test_supercut(fixture, tmp_path):
     assert clips[0].name == "0001.mp4"
     assert all(decodes_cleanly(c) for c in clips)
 
-    sc = d / "supercut.mp4"
+    sc = d / "fixture.supercut.mp4"
     assert decodes_cleanly(sc)
     info = ffprobe(sc)
     v, a = stream(info, "video"), stream(info, "audio")
@@ -52,7 +52,7 @@ def test_supercut(fixture, tmp_path):
 def test_scale_and_no_fade_zero(fixture, tmp_path):
     d, segs = _render(fixture.video, tmp_path, "--scale", "120", "--fade-ms", "0",
                       "--crf", "30")
-    v = stream(ffprobe(d / "supercut.mp4"), "video")
+    v = stream(ffprobe(d / "fixture.supercut.mp4"), "video")
     assert v["height"] == 120 and v["width"] == 160
     assert len(list((d / "clips").glob("*.mp4"))) == len(segs)
 

@@ -6,14 +6,17 @@ How it works: find the speech (Silero VAD) and the silence (an RMS threshold), s
 
 ## Usage
 
-With Docker (put videos in `data/in/`):
+With Docker. Videos go in `data/in/`, results come out in `data/out/` (the container always uses `/in` and `/out`):
 
 ```sh
 docker compose build
-docker compose run --rm superfoley /in/video.mp4 --out /out
+docker compose run --rm superfoley              # every video in data/in/
+docker compose run --rm superfoley video.mp4    # just data/in/video.mp4
 ```
 
-Results appear in `data/out/video/`.
+- With no filename, every video in `data/in/` is processed, one after another. Videos that already have output are skipped; add `--force` to redo them. One failing video doesn't stop the rest.
+- With a filename (looked up in `data/in/`), that video is always processed.
+- `--out` and the other options still work; `--dry-run` writes the segment list only.
 
 Without Docker (needs Python 3.11+ and ffmpeg; run from the repo directory):
 
@@ -22,9 +25,11 @@ python -m venv .venv && .venv/bin/pip install -e .
 .venv/bin/superfoley path/to/video.mp4 --out out
 ```
 
+Outside Docker the input folder is whatever `SUPERFOLEY_IN` points at (unset by default, so give a file path), and `SUPERFOLEY_OUT` sets the default `--out`.
+
 Per video it writes, under `<out>/<video-name>/`:
 
-- `supercut.mp4`: the kept sounds, joined, original audio and resolution
+- `<video-name>.supercut.mp4`: the kept sounds, joined, original audio and resolution (so `video.mp4` gives `video.supercut.mp4`)
 - `segments.json` and `segments.csv`: the kept time ranges
 - `clips/0001.mp4`, ...: each kept sound as its own clip
 
@@ -32,7 +37,8 @@ Per video it writes, under `<out>/<video-name>/`:
 
 | Flag | Default | What it does |
 |---|---|---|
-| `--out` | `./out` | Output directory |
+| `--out` | `./out` (`/out` in Docker) | Output directory |
+| `--force` | off | Folder mode: redo videos that already have output |
 | `--silence-db` | -45 | Frames quieter than this (dBFS) count as silence |
 | `--speech-pad-ms` | 150 | Widen detected speech by this much each side |
 | `--min-gap-ms` | 200 | Join kept sounds closer together than this |
@@ -46,7 +52,9 @@ Per video it writes, under `<out>/<video-name>/`:
 
 `--dry-run` takes seconds even for long clips, so use it to tune before rendering. See [docs/TUNING.md](docs/TUNING.md).
 
-Exit codes: 0 success (also when no sounds are found, with a warning), 1 failure (missing file, no audio track, ffmpeg error), 2 bad options.
+Exit codes: 0 success (also when no sounds are found, with a warning), 1 failure (missing file, no audio track, ffmpeg error, or any video failing in folder mode), 2 bad options.
+
+A video counts as done when its `.supercut.mp4` exists (or a finished run found nothing to keep). Folder mode only looks at the top level of the input folder, ignores hidden files, and refuses two videos with the same name but different extensions, since they'd share an output folder.
 
 ## Notes
 

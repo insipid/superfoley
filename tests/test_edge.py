@@ -19,7 +19,7 @@ def _segments(out, stem):
 
 
 def _no_supercut(out, stem):
-    assert not (out / stem / "supercut.mp4").exists()
+    assert not list((out / stem).glob("*supercut.mp4"))
     assert not list((out / stem).glob("clips/*"))
 
 
@@ -49,7 +49,7 @@ def test_variable_frame_rate(small_clips, tmp_path):
     assert len({round(d, 4) for d in np.diff(frame_pts(src))}) > 1, "test clip is not VFR"
     out = tmp_path / "o"
     assert main([str(src), "--out", str(out)]) == 0
-    sc = out / "vfr" / "supercut.mp4"
+    sc = out / "vfr" / "vfr.supercut.mp4"
     assert decodes_cleanly(sc)
     info = ffprobe(sc)
     v, a = stream(info, "video"), stream(info, "audio")
@@ -74,7 +74,7 @@ def test_av1_input(small_clips, tmp_path):
     assert stream(ffprobe(src), "video")["codec_name"] == "av1"
     out = tmp_path / "o"
     assert main([str(src), "--out", str(out)]) == 0
-    sc = out / "av1" / "supercut.mp4"
+    sc = out / "av1" / "av1.supercut.mp4"
     info = ffprobe(sc)
     assert stream(info, "video")["codec_name"] == "h264" and stream(info, "audio")
     assert decodes_cleanly(sc)
@@ -123,7 +123,7 @@ def test_odd_filenames(fixture, tmp_path):
     shutil.copy(fixture.video, vid)
     out = tmp_path / "out dir's ünï"
     assert main([str(vid), "--out", str(out)]) == 0
-    sc = out / vid.stem / "supercut.mp4"
+    sc = out / vid.stem / f"{vid.stem}.supercut.mp4"
     assert sc.exists() and decodes_cleanly(sc)
     assert stream(ffprobe(sc), "audio") and stream(ffprobe(sc), "video")
 

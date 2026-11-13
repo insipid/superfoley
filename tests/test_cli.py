@@ -37,9 +37,15 @@ def test_overrides():
     assert a.dry_run is True
 
 
-def test_input_required():
-    with pytest.raises(SystemExit):
-        build_parser().parse_args([])
+def test_input_optional_at_parse_time():
+    assert build_parser().parse_args([]).input is None
+
+
+def test_no_input_without_input_folder_is_usage_error(monkeypatch):
+    monkeypatch.delenv("SUPERFOLEY_IN", raising=False)
+    with pytest.raises(SystemExit) as e:
+        main([])
+    assert e.value.code == 2
 
 
 def test_usage_errors_exit_2():

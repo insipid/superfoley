@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import tempfile
@@ -64,6 +65,11 @@ def clip_command(src: str | Path, dst: str | Path, start: float, dur: float,
     return cmd
 
 
+def supercut_name(src: str | Path) -> str:
+    """``video.mp4`` -> ``video.supercut.mp4``."""
+    return f"{Path(src).stem}.supercut.mp4"
+
+
 def _concat_quote(p: Path) -> str:
     return "'" + str(p).replace("'", "'\\''") + "'"
 
@@ -73,14 +79,22 @@ def concat_clips(clips: Sequence[Path], dst: str | Path) -> None:
         lst = Path(td) / "list.txt"
         lst.write_text("".join(f"file {_concat_quote(Path(c).resolve())}\n" for c in clips),
                        encoding="utf-8")
-        _run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(lst),
-              "-c", "copy", "-movflags", "+faststart", str(dst)])
+        dst = Path(dst)
+        # Write to a temporary name and rename on success, so an interrupted run never
+        # leaves a half-written supercut that looks finished.
+        part = dst.with_name(dst.name + ".part")
+        try:
+            _run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(lst),
+                  "-c", "copy", "-movflags", "+faststart", "-f", "mp4", str(part)])
+            os.replace(part, dst)
+        finally:
+            part.unlink(missing_ok=True)
 
 
 def render(src: str | Path, segments: Sequence[Range], out_dir: str | Path, info: MediaInfo,
            *, crf: int = 20, scale: int | None = None, fade_ms: int = 10,
            progress: Callable[[str], None] | None = None) -> Path:
-    """Write ``clips/NNNN.mp4`` and ``supercut.mp4`` under ``out_dir``; return the supercut."""
+    """Write ``clips/NNNN.mp4`` and ``<stem>.supercut.mp4`` under ``out_dir``; return the supercut."""
     out_dir = Path(out_dir)
     clips_dir = out_dir / "clips"
     clips_dir.mkdir(parents=True, exist_ok=True)
@@ -97,6 +111,6 @@ def render(src: str | Path, segments: Sequence[Range], out_dir: str | Path, info
         _run(clip_command(src, dst, s, e - s, info, crf=crf, scale=scale, fade_ms=fade_ms))
         clips.append(dst)
     progress("concatenating")
-    out = out_dir / "supercut.mp4"
+    out = out_dir / supercut_name(src)
     concat_clips(clips, out)
     return out
